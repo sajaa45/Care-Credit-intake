@@ -19,12 +19,14 @@ Requirements: Python 3.10+ (developed on 3.14) and Node.js 22+ (developed on 24)
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env          
+cp .env.example .env          # then add your Groq key (see below)
 uvicorn main:app --reload --env-file .env
 ```
 
 - API and Swagger UI: http://localhost:8000/docs (`/` redirects there)
 - The SQLite database (`backend/intake.db`) is created on first start. It's git-ignored, so everyone gets their own. After a schema change, delete it and restart.
+
+**To test the free-text screening, use your own free Groq API key.** No key is included in the repository. Create one at https://console.groq.com/keys (free account, no payment details needed), then put it in `backend/.env` as `GROQ_API_KEY=gsk_...` and restart the backend. Without a key everything else works, but any application with free text fails screening and is sent to an employee for review.
 
 Environment variables (`backend/.env`, git-ignored; see `.env.example`):
 
@@ -32,7 +34,7 @@ Environment variables (`backend/.env`, git-ignored; see `.env.example`):
 |---|---|
 | `GROQ_API_KEY` | Key for the free-text screening call. Without it, every free-text answer fails screening: the text is deleted and the application is flagged for an employee. |
 | `GROQ_MODEL` | Optional, defaults to `openai/gpt-oss-120b`. |
-| `APPLICANT_ID_KEY` | Secret used to hash applicant ID numbers. Falls back to a dev-only key. Set it once and keep it, because changing it unlinks earlier applications. |
+| `APPLICANT_ID_KEY` | Optional for the prototype. Secret used to hash applicant ID numbers; without it a built-in dev key is used. In production it must be set (otherwise anyone with the code could hash a guessed ID number and find that person's applications), kept secret, and never changed, because changing it unlinks earlier applications. |
 
 ### Frontend (React + Vite)
 
@@ -51,9 +53,20 @@ cd backend
 python3 -m unittest discover -s tests
 ```
 
+No extra packages: tests call the endpoint functions directly, each with its own temporary database, and the model call is replaced by a fixed result.
+
+| File | What it checks |
+|---|---|
+| `test_rules.py` | The available-room formula (including the couple split), the exact accept/refer/decline boundaries, and the term suggestion |
+| `test_schedule.py` | About 6,000 schedules: closing balance exactly 0, instalments = principal + interest to the cent |
+| `test_intake.py` | Whole numbers only, product ranges, partner income for couples, "other" needs a description, ID digits only |
+| `test_free_text.py` | The raw text is held during screening and gone after (also on failure and after a crash), and a flag only ever escalates |
+| `test_employee.py` | Overturning in either direction with history kept, deciding referred applications, a reason and name required |
+| `test_compliance.py` | The record shows question wording, answers, every calculation step, decisions and timeline; the retention cutoff (including 29 February) and the purge |
+
 ### Trying the API without the UI
 
-Use Swagger at `/docs`, where the submit endpoint has ready-made examples in a dropdown, or `backend/requests.http` (VS Code REST Client / JetBrains HTTP client).
+Use Swagger at `/docs`, where the submit endpoint has ready-made examples in a dropdown.
 
 ---
 
@@ -147,6 +160,8 @@ After submitting: "We've received your application", then after a short pause (3
 
 The applicant never sees the reference ID, the available room, the norms or the screening summary.
 
+**Checking status later.** At `/applicant/status` the applicant enters their ID number and sees each of their applications: number, treatment, amount, term, and the current status in plain words (received, accepted, being reviewed, not approved). That includes a status an employee changed afterwards, with "reviewed by a colleague" and when. Clicking an application opens the same "received" and result view they saw after submitting, with the instalment, totals and schedule. If an employee decided, it shows that decision instead of the system's. Employee names, comments and the calculation stay internal. Like the compliance search, the ID number goes in the request body, not the URL.
+
 ### 6. Employee dashboard
 
 - Tabs: **To review** (referred), All, Accepted, Declined. Each row shows status, treatment, amount, term, the applicant hash prefix, the application number, and markers for "decided by employee" and "⚑ free text flagged".
@@ -161,7 +176,7 @@ The applicant never sees the reference ID, the available room, the norms or the 
   2. **What the system concluded, and on what basis.** Every assessment with its calculation and schedule, plus the free-text screening.
   3. **What employees did afterwards.** Every decision, from → to, who, why and when.
   4. **Timeline**: submitted → system outcome → free text screened → raw text deleted → each employee decision.
-- **"What we asked" is exact.** Every form version is stored in a `forms` table word for word, keyed by a hash of its content. Each application points to the exact form it answered, so an old record can never show today's wording, even if someone edits a question and forgets to bump `FORM_VERSION`.
+- **"What we asked" is exact.** Every form version is stored in a `forms` table word for word, keyed by a hash of its content. Each application points to the exact form it answered, so an old record can never show today's wording. Any edit to a question gives a new form id automatically, with no version number to remember to bump.
 - **Retention**: `POST /compliance/retention/purge` deletes applications older than 7 years. Their assessments, decisions and screening go with them. It's a **dry run by default** and only deletes with `?dry_run=false`.
 
 ---
@@ -170,9 +185,10 @@ The applicant never sees the reference ID, the available room, the norms or the 
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/applicant/form` | The form: questions, options, ranges, form id and version |
+| GET | `/applicant/form` | The form: questions, options, ranges and form id |
 | POST | `/applicant/applications` | Submit, assess and screen; returns the application with its assessment |
 | GET | `/applicant/applications/{id}` | One application with its latest assessment |
+| POST | `/applicant/applications/lookup` | An applicant's own applications and their current status, by ID number |
 | GET | `/employee/applications?status=refer` | All applications (optionally by status) with assessment, screening and decisions |
 | POST | `/employee/applications/{id}/decisions` | Record an accept or decline with a comment |
 | GET | `/compliance/applications` | All applications, summarised |
@@ -191,7 +207,6 @@ backend/
   employee/                dashboard list and decisions
   compliance/              record, search, retention
   tests/                   rule and schedule tests
-  requests.http            example requests
 frontend/src/
   pages/                   Home, Applicant, Employee, Compliance
   components/              form fields, result screens, review panels, schedule table
@@ -223,7 +238,7 @@ Other choices worth knowing:
 
 ## What I added that wasn't asked for
 
-**An exact, permanent record of the questions asked.** Every version of the intake form (labels, options and limits) is stored, keyed by a hash of its content, and each application points to the form it answered. The compliance record shows each answer next to the question exactly as the applicant saw it. "What we asked" was the one part of the compliance requirement with nothing behind it, and versioning by content means it stays right even if someone rewords a question and forgets to bump the version.
+**An exact, permanent record of the questions asked.** Every version of the intake form (labels, options and limits) is stored, keyed by a hash of its content, and each application points to the form it answered. The compliance record shows each answer next to the question exactly as the applicant saw it. "What we asked" was the one part of the compliance requirement with nothing behind it, and identifying forms by their content means it stays right without anyone having to remember to bump a version number.
 
 Smaller additions: linking repeat applicants (decision 3), the one-click retry with the suggested term, the dry-run-by-default retention purge, and deleting leftover raw text at startup.
 
@@ -240,7 +255,8 @@ Smaller additions: linking repeat applicants (decision 3), the one-click retry w
 - **No authentication.** Employee names are typed in, so "what any employee did" is self-reported. The retention purge can be called by anyone. Both need real identities and roles.
 - **Retention start date.** The memo says 7 years after the loan is *closed*. That needs a loan lifecycle, and the clock should start there.
 - **Business confirmation needed on the rule**: the couple split (decision 1), the refer band (10% of room vs. of instalment), and whether a partner's debts should be asked.
-- **Applicants aren't told about employee decisions.** An overturned outcome changes the status, but nothing notifies the applicant.
+- **Applicants aren't told about employee decisions.** They can look up the current status themselves, but nothing notifies them when an employee changes it.
+- **The ID number is the only "password" for the status lookup.** Anyone who knows someone's ID number can see their applications' status (not the calculation or the free text). Production needs real sign-in, such as DigiD or a link sent by email, and rate limiting.
 - **The decline text** promises a human review on request. There needs to be a real channel for that, and legal should review the wording.
 
 ## Status
@@ -249,5 +265,5 @@ Built: everything in the memo, including both optional parts (the UI, and handli
 
 Next steps I'd take:
 - When no term up to 60 months fits but there is some room, offer a smaller amount the applicant could borrow.
-- Tests for the intake validation and the decision and compliance endpoints. Today's tests cover the rule and the schedule.
+- Tests over HTTP (status codes, error format), which would need an HTTP test client.
 - The tamper-evident log described above.

@@ -2,6 +2,7 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-route
 
 import Home from "./pages/Home.jsx";
 import ApplicantPage from "./pages/ApplicantPage.jsx";
+import ApplicantStatusPage from "./pages/ApplicantStatusPage.jsx";
 import EmployeePage from "./pages/EmployeePage.jsx";
 import CompliancePage from "./pages/CompliancePage.jsx";
 
@@ -31,6 +32,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/applicant" element={<ApplicantPage />} />
+          <Route path="/applicant/status" element={<ApplicantStatusPage />} />
           <Route path="/employee" element={<EmployeePage />} />
           <Route path="/compliance" element={<CompliancePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -63,7 +63,7 @@ function Record({ id, onBack }) {
       <section className="record-section">
         <h3>1. What we asked, and what the applicant answered</h3>
         <p className="muted small">
-          Form version {record.form_version} · form id {record.form_id.slice(0, 12)}: the wording below is exactly
+          Form {record.form_id.slice(0, 12)}: the wording below is exactly
           what the applicant saw.
         </p>
         <table className="qa">

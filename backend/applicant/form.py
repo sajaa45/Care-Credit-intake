@@ -8,9 +8,6 @@ import hashlib
 import json
 from enum import Enum
 
-FORM_VERSION = "2026-10-08.3"
-
-
 class TreatmentType(str, Enum):
     dental = "dental"
     eye = "eye"
@@ -113,10 +110,10 @@ QUESTIONS = [
 ]
 
 
-# Identifies the exact questions, labels, options and limits, whatever FORM_VERSION says:
-# if someone edits a question and forgets to bump the version, the id still changes.
+# Identifies the exact questions, labels, options and limits: any edit to a question gives a new id,
+# with nothing to remember to bump.
 FORM_ID = hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True).encode()).hexdigest()
 
 
 def form_definition() -> dict:
-    return {"id": FORM_ID, "version": FORM_VERSION, "questions": QUESTIONS}
+    return {"id": FORM_ID, "questions": QUESTIONS}

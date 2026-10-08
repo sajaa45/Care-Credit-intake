@@ -312,3 +312,21 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .free-text-review.flagged { border-color: #e7c27d; background: #fffaf0; }
 .free-text-review h3 { margin-top: 4px; }
 .free-text-review p { margin: 0 0 8px; }
+
+/* Applicant status */
+.status-card {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.app-card:has(.status-card):hover { border-color: var(--accent); }
+.back { margin-bottom: 16px; }
+.status-line { display: block; margin-top: 4px; }
+.status-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }

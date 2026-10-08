@@ -192,6 +192,42 @@ class Application(BaseModel):
     assessment: Assessment | None = None
 
 
+class ApplicantSearch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    applicant_number: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, pattern=r"^[0-9]+$", max_length=APPLICANT_NUMBER_MAX_LENGTH),
+    ] = Field(description="The applicant's ID number. Hashed the same way as at intake; never stored or logged.")
+
+
+class ApplicantOffer(BaseModel):
+    """The part of an assessment the applicant sees: no room, norms or calculation steps."""
+
+    outcome: Literal["accept", "refer", "decline"]
+    term: int
+    instalment: Decimal
+    total_repayable: Decimal | None
+    total_interest: Decimal | None
+    schedule: list[ScheduleRow] | None
+    suggested_term: int | None
+    suggested_instalment: Decimal | None
+
+
+class ApplicationStatus(BaseModel):
+    """What an applicant may see about one of their own applications."""
+
+    application_number: int
+    treatment: str
+    cost: int
+    requested_term: int
+    status: Literal["submitted", "accept", "refer", "decline"]
+    reviewed_by_employee: bool = Field(description="True if a colleague made a decision on it.")
+    submitted_at: datetime
+    updated_at: datetime = Field(description="When the status last changed.")
+    offer: ApplicantOffer | None = Field(description="What the system offered when it was assessed.")
+
+
 class FieldError(BaseModel):
     field: str | None = Field(description="The request field the error belongs to; null if it's about the whole request.")
     message: str = Field(description="A message that can be shown to the applicant as-is.")

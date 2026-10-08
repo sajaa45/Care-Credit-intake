@@ -1,9 +1,7 @@
 from datetime import datetime
-from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, Field
 
-from applicant.form import APPLICANT_NUMBER_MAX_LENGTH
 from applicant.schemas import Application, Assessment
 from employee.schemas import Decision, FreeTextReview
 
@@ -18,15 +16,6 @@ class ApplicationSummary(BaseModel):
     status: str
     created_at: datetime
     decided_by_employee: bool
-
-
-class ApplicantSearch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    applicant_number: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, pattern=r"^[0-9]+$", max_length=APPLICANT_NUMBER_MAX_LENGTH),
-    ] = Field(description="The applicant's ID number. Hashed the same way as at intake; never stored or logged.")
 
 
 class AnsweredQuestion(BaseModel):
@@ -48,7 +37,6 @@ class ComplianceRecord(BaseModel):
 
     application: Application
     form_id: str
-    form_version: str
     answers: list[AnsweredQuestion]
     assessments: list[Assessment] = Field(description="Every assessment, oldest first.")
     free_text_review: FreeTextReview | None

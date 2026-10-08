@@ -1,5 +1,7 @@
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 DB_PATH = os.environ.get("INTAKE_DB", os.path.join(os.path.dirname(__file__), "intake.db"))
@@ -8,7 +10,6 @@ SCHEMA = """
 -- Every form ever answered, word for word, so an application always shows what we asked.
 CREATE TABLE IF NOT EXISTS forms (
     id          TEXT PRIMARY KEY,  -- sha256 of the question definitions
-    version     TEXT NOT NULL,
     definition  TEXT NOT NULL,     -- JSON: questions, labels, options, limits
     created_at  TEXT NOT NULL
 );
@@ -89,12 +90,18 @@ def now_iso(moment: datetime | None = None) -> str:
     return (moment or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
-def connect() -> sqlite3.Connection:
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    """A connection for one `with` block: commits on success, rolls back on error, always closes."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     # Off by default in SQLite; needed so deleting an application also deletes its assessments.
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        with conn:  # sqlite3's own context manager commits or rolls back, but doesn't close
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_db() -> None:

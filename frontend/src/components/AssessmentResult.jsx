@@ -2,6 +2,8 @@
 // The applicant gets the outcome and their instalment, not the internal numbers
 // (available room, norms); those are for the employee.
 
+import { Link } from "react-router-dom";
+
 import { euro as money } from "../format.js";
 import ScheduleTable from "./ScheduleTable.jsx";
 
@@ -13,19 +15,25 @@ function TermAlternative({ assessment, onChangeTerm }) {
         <strong>We could finance it over {assessment.suggested_term} months</strong> instead, at{" "}
         {money(assessment.suggested_instalment)} per month.
       </p>
-      <button type="button" className="button" onClick={() => onChangeTerm(assessment.suggested_term)}>
-        Apply with {assessment.suggested_term} months
-      </button>
+      {onChangeTerm ? (
+        <button type="button" className="button" onClick={() => onChangeTerm(assessment.suggested_term)}>
+          Apply with {assessment.suggested_term} months
+        </button>
+      ) : (
+        <Link to="/applicant" className="button">
+          Start a new application with {assessment.suggested_term} months
+        </Link>
+      )}
     </div>
   );
 }
 
-function Accepted({ assessment }) {
+function Accepted({ assessment, heading = "Good news: we can finance your treatment" }) {
   const schedule = assessment.schedule;
   const finalInstalment = schedule?.[schedule.length - 1].instalment;
   return (
     <>
-      <h2>Good news: we can finance your treatment</h2>
+      <h2>{heading}</h2>
       <dl className="summary">
         <dt>Monthly instalment</dt>
         <dd>
@@ -93,6 +101,18 @@ function Declined({ assessment, onChangeTerm }) {
         you money that would make things harder for you.
       </p>
       <p>This is not a judgement about you, and it doesn't stop you from applying again.</p>
+      <NextSteps />
+      <p className="muted">
+        This decision was made automatically using a fixed rule. If you think something went wrong, or you'd like
+        a person to look at it, contact us and one of our colleagues will review it.
+      </p>
+    </>
+  );
+}
+
+function NextSteps() {
+  return (
+    <>
       <h3>What you can do</h3>
       <ul className="steps">
         <li>
@@ -112,10 +132,20 @@ function Declined({ assessment, onChangeTerm }) {
           It's confidential and free.
         </li>
       </ul>
-      <p className="muted">
-        This decision was made automatically using a fixed rule. If you think something went wrong, or you'd like
-        a person to look at it, contact us and one of our colleagues will review it.
+    </>
+  );
+}
+
+function DeclinedByEmployee() {
+  return (
+    <>
+      <h2>We're not able to finance this treatment</h2>
+      <p>
+        One of our colleagues looked at your application in detail. We're sorry, but we can't offer you this loan.
+        We know this isn't the answer you were hoping for, especially when it's about your health.
       </p>
+      <p>This is not a judgement about you, and it doesn't stop you from applying again.</p>
+      <NextSteps />
     </>
   );
 }
@@ -132,7 +162,21 @@ function ReferredForReview() {
   );
 }
 
-export default function AssessmentResult({ assessment, status, onChangeTerm }) {
+// `onChangeTerm` is only given right after submitting, when the answers are still there to resubmit.
+export default function AssessmentResult({ assessment, status, reviewedByEmployee = false, onChangeTerm }) {
+  // An employee's decision replaces whatever the system concluded.
+  if (reviewedByEmployee && (status === "accept" || status === "decline")) {
+    return (
+      <section className={`result result-${status}`} aria-live="polite">
+        {status === "accept" ? (
+          <Accepted assessment={assessment} heading="Good news: after review, we can finance your treatment" />
+        ) : (
+          <DeclinedByEmployee />
+        )}
+      </section>
+    );
+  }
+
   // The rule accepted it, but the free-text answer raised something for a person to check.
   const referredForReview = status === "refer" && assessment.outcome === "accept";
   const Outcome = referredForReview

@@ -9,9 +9,18 @@ import db
 from assessment.free_text import screen
 from assessment.service import assess_and_store, store_free_text_review
 
-from .form import FORM_ID, FORM_VERSION, QUESTIONS, form_definition
+from .form import FORM_ID, QUESTIONS, form_definition
 from .identity import hash_applicant_number
-from .schemas import Application, Assessment, IntakeSubmission, NotFoundResponse, ValidationErrorResponse
+from .schemas import (
+    ApplicantOffer,
+    ApplicantSearch,
+    Application,
+    ApplicationStatus,
+    Assessment,
+    IntakeSubmission,
+    NotFoundResponse,
+    ValidationErrorResponse,
+)
 
 router = APIRouter(prefix="/applicant", tags=["Applicant intake"])
 
@@ -106,8 +115,8 @@ def submit_application(
     application_id = str(uuid.uuid4())
     with db.connect() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO forms (id, version, definition, created_at) VALUES (?, ?, ?, ?)",
-            (FORM_ID, FORM_VERSION, json.dumps(QUESTIONS), db.now_iso()),
+            "INSERT OR IGNORE INTO forms (id, definition, created_at) VALUES (?, ?, ?)",
+            (FORM_ID, json.dumps(QUESTIONS), db.now_iso()),
         )
         # The next application_number is computed inside the INSERT itself, so two
         # submissions for the same applicant can't both get the same number.
@@ -156,6 +165,44 @@ def submit_application(
         store_free_text_review(conn, application_id, screening)
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
     return _to_application(row, assessment)
+
+
+@router.post(
+    "/applications/lookup",
+    summary="Look up my applications",
+    response_model=list[ApplicationStatus],
+    responses={422: {"model": ValidationErrorResponse, "description": "The ID number isn't digits only."}},
+)
+def lookup_applications(search: ApplicantSearch) -> list[ApplicationStatus]:
+    """The applicant's own applications and their current status, newest first.
+
+    Shows a status an employee changed later, too. Internal details (calculation, screening,
+    employee names and comments) are left out. The ID number goes in the body, not the URL,
+    so it stays out of logs and browser history.
+    """
+    with db.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT a.id, a.application_number, a.treatment, a.cost, a.requested_term, a.status,
+                   a.created_at AS submitted_at,
+                   COALESCE(MAX(d.created_at), a.created_at) AS updated_at,
+                   COUNT(d.id) > 0 AS reviewed_by_employee
+            FROM applications a
+            LEFT JOIN decisions d ON d.application_id = a.id
+            WHERE a.applicant_id = ?
+            GROUP BY a.id
+            ORDER BY a.application_number DESC
+            """,
+            (hash_applicant_number(search.applicant_number),),
+        ).fetchall()
+        result = []
+        for row in rows:
+            assessment = conn.execute(
+                "SELECT * FROM assessments WHERE application_id = ? ORDER BY created_at DESC LIMIT 1", (row["id"],)
+            ).fetchone()
+            offer = ApplicantOffer(**Assessment.from_row(assessment).model_dump()) if assessment else None
+            result.append(ApplicationStatus(**dict(row), offer=offer))
+    return result
 
 
 @router.get(

@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field
 
 import db
 from applicant.identity import hash_applicant_number
-from applicant.schemas import Application, Assessment, NotFoundResponse
+from applicant.schemas import ApplicantSearch, Application, Assessment, NotFoundResponse
 from employee.schemas import Decision, FreeTextReview
 
-from .schemas import AnsweredQuestion, ApplicantSearch, ApplicationSummary, ComplianceRecord, TimelineEvent
+from .schemas import AnsweredQuestion, ApplicationSummary, ComplianceRecord, TimelineEvent
 
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
 
@@ -117,7 +117,7 @@ def application_record(application_id: str) -> ComplianceRecord:
     assessments = [Assessment.from_row(a) for a in assessments]
     decisions = [Decision(**dict(d)) for d in decisions]
 
-    timeline = [TimelineEvent(at=application["created_at"], event="Submitted", detail=f"Form version {form['version']}")]
+    timeline = [TimelineEvent(at=application["created_at"], event="Submitted", detail=f"Form {form['id'][:12]}")]
     timeline += [
         TimelineEvent(at=a.created_at, event=f"System: {a.outcome}", detail=f"Rule {a.rule_version}. {a.reason}")
         for a in assessments
@@ -153,7 +153,6 @@ def application_record(application_id: str) -> ComplianceRecord:
     return ComplianceRecord(
         application=Application(**dict(application), assessment=assessments[-1] if assessments else None),
         form_id=form["id"],
-        form_version=form["version"],
         answers=_answers(json.loads(form["definition"]), application, review),
         assessments=assessments,
         free_text_review=review,

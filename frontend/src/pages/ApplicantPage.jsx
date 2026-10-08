@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import AssessmentResult from "../components/AssessmentResult.jsx";
 import QuestionField, { formatAmount } from "../components/QuestionField.jsx";
+import ReceivedCard from "../components/ReceivedCard.jsx";
 
 // The assessment itself is instant; the applicant first sees that their
 // application arrived, and the result follows after this pause.
@@ -131,17 +133,7 @@ export default function ApplicantPage() {
   if (received) {
     return (
       <>
-        <section className="received" role="status">
-          <div className="received-icon" aria-hidden="true">✓</div>
-          <h1>We've received your application</h1>
-          <p className="lede">Thank you. Your application has been submitted successfully.</p>
-          <dl className="summary">
-            <dt>Application</dt>
-            <dd>Number {received.application_number} under your ID number</dd>
-            <dt>Received</dt>
-            <dd>{new Date(received.created_at).toLocaleString("en-GB")}</dd>
-          </dl>
-        </section>
+        <ReceivedCard applicationNumber={received.application_number} receivedAt={received.created_at} />
 
         {processing ? (
           <section className="result processing" aria-live="polite">
@@ -151,9 +143,14 @@ export default function ApplicantPage() {
         ) : (
           <>
             {received.assessment && <AssessmentResult assessment={received.assessment} status={received.status} onChangeTerm={changeTerm} />}
-            <button type="button" className="button secondary" onClick={startOver}>
-              Start a new application
-            </button>
+            <div className="actions">
+              <button type="button" className="button secondary" onClick={startOver}>
+                Start a new application
+              </button>
+              <Link to="/applicant/status" className="button secondary">
+                Check my applications later
+              </Link>
+            </div>
           </>
         )}
       </>
@@ -165,6 +162,9 @@ export default function ApplicantPage() {
       <h1>Apply for treatment financing</h1>
       <p className="lede">
         A few questions about the treatment and your monthly budget. It takes about five minutes.
+      </p>
+      <p>
+        Already applied? <Link to="/applicant/status">Check the status of your applications</Link>
       </p>
 
       {loadFailed && <p className="form-error">We couldn't load the form. Is the backend running on port 8000?</p>}
