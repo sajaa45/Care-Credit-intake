@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import uuid
 from typing import Annotated
@@ -5,9 +6,10 @@ from typing import Annotated
 from fastapi import APIRouter, Body, HTTPException, status
 
 import db
-from assessment.service import assess_and_store
+from assessment.free_text import screen
+from assessment.service import assess_and_store, store_free_text_review
 
-from .form import form_definition
+from .form import FORM_ID, FORM_VERSION, QUESTIONS, form_definition
 from .identity import hash_applicant_number
 from .schemas import Application, Assessment, IntakeSubmission, NotFoundResponse, ValidationErrorResponse
 
@@ -89,6 +91,11 @@ def submit_application(
     The assessment runs straight away and is stored with every number it used; the application's
     `status` becomes the outcome (`accept`, `refer` or `decline`).
 
+    `additional_information` is held only until a language model has read it: the model writes a short
+    summary and says whether a human needs to look at something, then the raw text is deleted. If it
+    flags something, an accepted application is referred instead. If screening fails, the text is
+    deleted anyway and the application is flagged.
+
     Every submission is a new application; earlier ones are never changed. Submissions with the same
     `applicant_number` are linked to one applicant and numbered 1, 2, 3, … in the order they arrive.
 
@@ -98,24 +105,28 @@ def submit_application(
     """
     application_id = str(uuid.uuid4())
     with db.connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO forms (id, version, definition, created_at) VALUES (?, ?, ?, ?)",
+            (FORM_ID, FORM_VERSION, json.dumps(QUESTIONS), db.now_iso()),
+        )
         # The next application_number is computed inside the INSERT itself, so two
         # submissions for the same applicant can't both get the same number.
         conn.execute(
             """
             INSERT INTO applications (
-                id, applicant_id, application_number, treatment, cost, requested_term, income,
-                housing_cost, existing_obligations, household, partner_income,
-                additional_information, status, created_at
+                id, applicant_id, application_number, form_id, treatment, cost, requested_term, income,
+                housing_cost, existing_obligations, household, partner_income, status, created_at
             )
             SELECT
-                :id, :applicant_id, COALESCE(MAX(application_number), 0) + 1, :treatment, :cost,
+                :id, :applicant_id, COALESCE(MAX(application_number), 0) + 1, :form_id, :treatment, :cost,
                 :requested_term, :income, :housing_cost, :existing_obligations, :household,
-                :partner_income, :additional_information, :status, :created_at
+                :partner_income, :status, :created_at
             FROM applications WHERE applicant_id = :applicant_id
             """,
             {
                 "id": application_id,
                 "applicant_id": hash_applicant_number(submission.applicant_number),
+                "form_id": FORM_ID,
                 "treatment": submission.treatment_value(),
                 "cost": submission.cost,
                 "requested_term": submission.requested_term,
@@ -124,7 +135,6 @@ def submit_application(
                 "existing_obligations": submission.existing_obligations,
                 "household": submission.household.value,
                 "partner_income": submission.partner_income,
-                "additional_information": submission.additional_information,
                 "status": "submitted",
                 "created_at": db.now_iso(),
             },
@@ -132,6 +142,18 @@ def submit_application(
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
         # Same transaction: an application is never stored without its assessment.
         assessment = assess_and_store(conn, row)
+        if submission.additional_information:
+            conn.execute(
+                "INSERT INTO free_text_pending (application_id, text, created_at) VALUES (?, ?, ?)",
+                (application_id, submission.additional_information, db.now_iso()),
+            )
+
+    # The model call is a network request, so it runs between transactions, not inside one.
+    screening = screen(submission.additional_information)
+
+    with db.connect() as conn:
+        # Stores the summary and reason, and deletes the raw text in the same transaction.
+        store_free_text_review(conn, application_id, screening)
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
     return _to_application(row, assessment)
 

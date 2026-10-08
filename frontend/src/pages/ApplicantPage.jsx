@@ -5,7 +5,7 @@ import QuestionField, { formatAmount } from "../components/QuestionField.jsx";
 
 // The assessment itself is instant; the applicant first sees that their
 // application arrived, and the result follows after this pause.
-const PROCESSING_MS = 5000;
+const PROCESSING_MS = 3000;
 
 // The form is drawn from GET /applicant/form, so the options and limits always
 // match what the API accepts. The API stays the authority: the checks here only
@@ -150,7 +150,7 @@ export default function ApplicantPage() {
           </section>
         ) : (
           <>
-            {received.assessment && <AssessmentResult assessment={received.assessment} onChangeTerm={changeTerm} />}
+            {received.assessment && <AssessmentResult assessment={received.assessment} status={received.status} onChangeTerm={changeTerm} />}
             <button type="button" className="button secondary" onClick={startOver}>
               Start a new application
             </button>

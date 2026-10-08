@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 import db
 from applicant.schemas import Assessment, NotFoundResponse, ValidationErrorResponse
 
-from .schemas import Decision, DecisionRequest, ReviewedApplication
+from .schemas import Decision, DecisionRequest, FreeTextReview, ReviewedApplication
 
 router = APIRouter(prefix="/employee", tags=["Employee"])
 
@@ -15,7 +15,7 @@ Status = Literal["submitted", "accept", "refer", "decline"]
 
 
 def _load(conn: sqlite3.Connection, applications: list[sqlite3.Row]) -> list[ReviewedApplication]:
-    """Attach each application's latest assessment and all its decisions."""
+    """Attach each application's latest assessment, free-text review and all its decisions."""
     result = []
     for application in applications:
         assessment = conn.execute(
@@ -24,10 +24,14 @@ def _load(conn: sqlite3.Connection, applications: list[sqlite3.Row]) -> list[Rev
         decisions = conn.execute(
             "SELECT * FROM decisions WHERE application_id = ? ORDER BY created_at", (application["id"],)
         ).fetchall()
+        review = conn.execute(
+            "SELECT * FROM free_text_reviews WHERE application_id = ?", (application["id"],)
+        ).fetchone()
         result.append(
             ReviewedApplication(
                 **dict(application),
                 assessment=Assessment.from_row(assessment) if assessment else None,
+                free_text_review=FreeTextReview(**dict(review)) if review else None,
                 decisions=[Decision(**dict(d)) for d in decisions],
             )
         )

@@ -14,7 +14,7 @@ import hmac
 import os
 
 # Prototype fallback so the app runs out of the box; set APPLICANT_ID_KEY for anything real.
-_KEY = os.environ.get("APPLICANT_ID_KEY", "dev-only-key-do-not-use-in-production").encode()
+_KEY = (os.environ.get("APPLICANT_ID_KEY") or "dev-only-key-do-not-use-in-production").encode()
 
 
 def hash_applicant_number(applicant_number: str) -> str:

@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 
 import db
+from assessment.service import discard_unscreened_free_text
 from applicant.router import router as applicant_router
 from applicant.schemas import FieldError, ValidationErrorResponse
 from compliance.router import router as compliance_router
@@ -19,6 +20,7 @@ repaid over 6–60 months.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    discard_unscreened_free_text()
     yield
 
 

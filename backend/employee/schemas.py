@@ -29,7 +29,24 @@ class Decision(BaseModel):
     created_at: datetime
 
 
-class ReviewedApplication(Application):
-    """An application with its latest assessment and every employee decision, oldest first."""
+class FreeTextReview(BaseModel):
+    """What the language model made of the free-text answer: all that's kept once the raw text is deleted."""
 
+    status: Literal["screened", "failed", "skipped"] = Field(
+        description="`screened`; `failed` (not stored, flagged for follow-up); `skipped` (left empty)."
+    )
+    summary: str | None = Field(description="Short summary for the employee, without medical detail.")
+    needs_review: bool
+    reason: str = Field(description="Why it does (or doesn't) need a human to look at it.")
+    referred_by_flag: bool = Field(description="True if this flag turned the rule's `accept` into `refer`.")
+    model: str
+    prompt_version: str
+    created_at: datetime
+    raw_text_deleted_at: datetime | None = Field(description="When the raw text was deleted; null if there was none.")
+
+
+class ReviewedApplication(Application):
+    """An application with its latest assessment, free-text review and every employee decision, oldest first."""
+
+    free_text_review: FreeTextReview | None = None
     decisions: list[Decision] = []

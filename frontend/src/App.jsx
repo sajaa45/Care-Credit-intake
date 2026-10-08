@@ -1,9 +1,9 @@
-import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import Home from "./pages/Home.jsx";
 import ApplicantPage from "./pages/ApplicantPage.jsx";
 import EmployeePage from "./pages/EmployeePage.jsx";
-import ComingSoon from "./pages/ComingSoon.jsx";
+import CompliancePage from "./pages/CompliancePage.jsx";
 
 const ROLES = [
   { to: "/applicant", label: "Applicant" },
@@ -13,7 +13,7 @@ const ROLES = [
 
 export default function App() {
   const { pathname } = useLocation();
-  const wide = pathname.startsWith("/employee");
+  const wide = pathname.startsWith("/employee") || pathname.startsWith("/compliance");
 
   return (
     <>
@@ -32,8 +32,8 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/applicant" element={<ApplicantPage />} />
           <Route path="/employee" element={<EmployeePage />} />
-          <Route path="/compliance" element={<ComingSoon title="Compliance" />} />
-          <Route path="*" element={<ComingSoon title="Page not found" />} />
+          <Route path="/compliance" element={<CompliancePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </>

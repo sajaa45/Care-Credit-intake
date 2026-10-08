@@ -5,10 +5,19 @@ from datetime import datetime, timezone
 DB_PATH = os.environ.get("INTAKE_DB", os.path.join(os.path.dirname(__file__), "intake.db"))
 
 SCHEMA = """
+-- Every form ever answered, word for word, so an application always shows what we asked.
+CREATE TABLE IF NOT EXISTS forms (
+    id          TEXT PRIMARY KEY,  -- sha256 of the question definitions
+    version     TEXT NOT NULL,
+    definition  TEXT NOT NULL,     -- JSON: questions, labels, options, limits
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS applications (
     id                      TEXT PRIMARY KEY,
     applicant_id            TEXT NOT NULL,
     application_number      INTEGER NOT NULL,
+    form_id                 TEXT NOT NULL REFERENCES forms (id),
     treatment               TEXT NOT NULL,
     cost                    INTEGER NOT NULL,
     requested_term          INTEGER NOT NULL,
@@ -17,7 +26,6 @@ CREATE TABLE IF NOT EXISTS applications (
     existing_obligations    INTEGER NOT NULL,
     household               TEXT NOT NULL,
     partner_income          INTEGER,
-    additional_information  TEXT NOT NULL DEFAULT '',
     status                  TEXT NOT NULL,
     created_at              TEXT NOT NULL,
     UNIQUE (applicant_id, application_number)
@@ -38,6 +46,28 @@ CREATE TABLE IF NOT EXISTS assessments (
     suggested_instalment  TEXT,
     calculation           TEXT NOT NULL,
     created_at            TEXT NOT NULL
+);
+
+-- The applicant's raw free-text answer, held only until the model has read it. It may contain
+-- medical detail, so it lives apart from the permanent record and is deleted after screening.
+CREATE TABLE IF NOT EXISTS free_text_pending (
+    application_id  TEXT PRIMARY KEY REFERENCES applications (id) ON DELETE CASCADE,
+    text            TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
+-- The model's reading of the free-text answer, one per application: what's kept once the raw text is gone.
+CREATE TABLE IF NOT EXISTS free_text_reviews (
+    application_id      TEXT PRIMARY KEY REFERENCES applications (id) ON DELETE CASCADE,
+    status              TEXT NOT NULL CHECK (status IN ('screened', 'failed', 'skipped')),
+    summary             TEXT,
+    needs_review        INTEGER NOT NULL,
+    reason              TEXT NOT NULL,
+    referred_by_flag    INTEGER NOT NULL,  -- 1 if the flag turned the rule's 'accept' into 'refer'
+    model               TEXT NOT NULL,
+    prompt_version      TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    raw_text_deleted_at TEXT  -- null only when there was no text to delete
 );
 
 -- Employee decisions. Append-only: a later decision overrides an earlier one by being newer,

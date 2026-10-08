@@ -174,6 +174,7 @@ class Application(BaseModel):
     id: str = Field(description="Application reference (UUID).")
     applicant_id: str = Field(description="Keyed hash (HMAC-SHA256) of the applicant's ID number; never the number itself.")
     application_number: int = Field(description="1 for the applicant's first application, 2 for the second, and so on.")
+    form_id: str = Field(description="The exact form answered (sha256 of its questions); see the compliance record.")
     treatment: str = Field(description="`dental`, `eye`, `orthodontic`, or the applicant's own description.")
     cost: int
     requested_term: int = Field(description="Requested term in months.")
@@ -182,7 +183,6 @@ class Application(BaseModel):
     existing_obligations: int
     household: Household
     partner_income: int | None = Field(description="Null when the household has no partner.")
-    additional_information: str
     status: str = Field(
         description="`submitted`, the assessment outcome (`accept`, `refer`, `decline`), "
         "or the latest employee decision (`accept`, `decline`).",

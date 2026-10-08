@@ -8,6 +8,7 @@ from decimal import Decimal
 import db
 from applicant.form import Household
 
+from .free_text import FAILED_REASON, MODEL, PROMPT_VERSION, ScreeningOutcome
 from .rules import (
     ANNUAL_INTEREST_RATE,
     REFER_MARGIN,
@@ -99,3 +100,52 @@ def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> sqli
     )
     conn.execute("UPDATE applications SET status = ? WHERE id = ?", (result.outcome, application["id"]))
     return conn.execute("SELECT * FROM assessments WHERE id = ?", (assessment_id,)).fetchone()
+
+
+def store_free_text_review(conn: sqlite3.Connection, application_id: str, screening: ScreeningOutcome) -> None:
+    """Store the screening, delete the raw text, and send flagged accepted applications to an employee.
+
+    The model can only ever send a case to a human. It never accepts or declines anything itself,
+    and the rule's own assessment stays on record unchanged.
+    """
+    deleted = conn.execute("DELETE FROM free_text_pending WHERE application_id = ?", (application_id,)).rowcount
+    status = conn.execute("SELECT status FROM applications WHERE id = ?", (application_id,)).fetchone()["status"]
+    referred_by_flag = screening.needs_review and status == "accept"
+    if referred_by_flag:
+        conn.execute("UPDATE applications SET status = 'refer' WHERE id = ?", (application_id,))
+    conn.execute(
+        """
+        INSERT INTO free_text_reviews (
+            application_id, status, summary, needs_review, reason, referred_by_flag, model, prompt_version,
+            created_at, raw_text_deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            application_id,
+            screening.status,
+            screening.summary,
+            screening.needs_review,
+            screening.reason,
+            referred_by_flag,
+            MODEL,
+            PROMPT_VERSION,
+            db.now_iso(),
+            db.now_iso() if deleted else None,
+        ),
+    )
+
+
+def discard_unscreened_free_text() -> None:
+    """Delete raw text left behind if the server stopped between storing it and screening it.
+
+    Called at startup, so raw text never outlives a crash. Those applications are flagged like
+    any failed screening.
+    """
+    with db.connect() as conn:
+        pending = conn.execute("SELECT application_id FROM free_text_pending").fetchall()
+        for row in pending:
+            store_free_text_review(
+                conn,
+                row["application_id"],
+                ScreeningOutcome(status="failed", summary=None, needs_review=True, reason=FAILED_REASON),
+            )

@@ -4,6 +4,8 @@ so the questions shown to the applicant and the rules enforced on their
 answers can't drift apart.
 """
 
+import hashlib
+import json
 from enum import Enum
 
 FORM_VERSION = "2026-10-08.3"
@@ -111,5 +113,10 @@ QUESTIONS = [
 ]
 
 
+# Identifies the exact questions, labels, options and limits, whatever FORM_VERSION says:
+# if someone edits a question and forgets to bump the version, the id still changes.
+FORM_ID = hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True).encode()).hexdigest()
+
+
 def form_definition() -> dict:
-    return {"version": FORM_VERSION, "questions": QUESTIONS}
+    return {"id": FORM_ID, "version": FORM_VERSION, "questions": QUESTIONS}

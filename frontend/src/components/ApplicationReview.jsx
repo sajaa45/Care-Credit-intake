@@ -32,14 +32,12 @@ function Answers({ application: a }) {
         <dd>{euro(a.housing_cost)}</dd>
         <dt>Existing obligations</dt>
         <dd>{euro(a.existing_obligations)}</dd>
-        <dt>Anything else</dt>
-        <dd className="free-text">{a.additional_information || <span className="muted">Nothing entered</span>}</dd>
       </dl>
     </section>
   );
 }
 
-function Calculation({ assessment }) {
+export function Calculation({ assessment }) {
   if (!assessment) {
     return (
       <section>
@@ -86,7 +84,36 @@ function Calculation({ assessment }) {
   );
 }
 
-function History({ decisions }) {
+export function FreeTextReview({ review }) {
+  if (!review || review.status === "skipped") return null;
+  return (
+    <section className={`free-text-review${review.needs_review ? " flagged" : ""}`}>
+      <h3>
+        Free-text answer{" "}
+        <span className={`badge ${review.needs_review ? "badge-refer" : "badge-accept"}`}>
+          {review.needs_review ? "Needs a look" : "Nothing flagged"}
+        </span>
+      </h3>
+      {review.summary && <p><strong>Summary:</strong> {review.summary}</p>}
+      <p><strong>{review.needs_review ? "Why:" : "Reason:"}</strong> {review.reason}</p>
+      {review.raw_text_deleted_at && (
+        <p className="muted">
+          The applicant's own words were deleted after screening ({dateTime(review.raw_text_deleted_at)}); only this
+          summary and reason are kept.
+        </p>
+      )}
+      {review.referred_by_flag && (
+        <p className="muted">The rule accepted this application; the flag sent it to review instead.</p>
+      )}
+      <p className="muted small">
+        {review.status === "failed" ? "Screening failed" : "Screened"} by {review.model} · prompt{" "}
+        {review.prompt_version} · {dateTime(review.created_at)}
+      </p>
+    </section>
+  );
+}
+
+export function History({ decisions }) {
   if (decisions.length === 0) return null;
   return (
     <section>
@@ -197,6 +224,7 @@ export default function ApplicationReview({ application, onUpdated }) {
         <Answers application={application} />
         <Calculation assessment={application.assessment} />
       </div>
+      <FreeTextReview review={application.free_text_review} />
       <History decisions={application.decisions} />
       <DecisionForm application={application} onUpdated={onUpdated} />
     </div>

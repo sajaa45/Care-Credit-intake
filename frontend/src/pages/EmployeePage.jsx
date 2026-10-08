@@ -72,6 +72,7 @@ export default function EmployeePage() {
                   Applicant {a.applicant_id.slice(0, 8)} · #{a.application_number} ·{" "}
                   {new Date(a.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
                   {a.decisions.length > 0 && " · decided by employee"}
+                  {a.free_text_review?.needs_review && " · ⚑ free text flagged"}
                 </span>
               </button>
               {open && <ApplicationReview application={a} onUpdated={replaceApplication} />}

@@ -120,10 +120,26 @@ function Declined({ assessment, onChangeTerm }) {
   );
 }
 
-export default function AssessmentResult({ assessment, onChangeTerm }) {
-  const Outcome = { accept: Accepted, refer: Referred, decline: Declined }[assessment.outcome];
+function ReferredForReview() {
   return (
-    <section className={`result result-${assessment.outcome}`} aria-live="polite">
+    <>
+      <h2>One of our colleagues will look at your application</h2>
+      <p>
+        The repayments fit your budget. Something in what you told us about your situation is worth a closer
+        look before we confirm, so a colleague will check it and let you know the outcome.
+      </p>
+    </>
+  );
+}
+
+export default function AssessmentResult({ assessment, status, onChangeTerm }) {
+  // The rule accepted it, but the free-text answer raised something for a person to check.
+  const referredForReview = status === "refer" && assessment.outcome === "accept";
+  const Outcome = referredForReview
+    ? ReferredForReview
+    : { accept: Accepted, refer: Referred, decline: Declined }[assessment.outcome];
+  return (
+    <section className={`result result-${referredForReview ? "refer" : assessment.outcome}`} aria-live="polite">
       <Outcome assessment={assessment} onChangeTerm={onChangeTerm} />
     </section>
   );
