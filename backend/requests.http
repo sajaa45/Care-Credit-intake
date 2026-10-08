@@ -1,0 +1,62 @@
+@base = http://localhost:8000
+
+### The form: questions, options, integer ranges
+GET {{base}}/applicant/form
+
+### Submit a valid intake
+# @name submit
+POST {{base}}/applicant/applications
+Content-Type: application/json
+
+{
+  "applicant_number": "123456789",
+  "treatment": "dental",
+  "cost": 3500,
+  "requested_term": 24,
+  "income": 2800,
+  "housing_cost": 900,
+  "existing_obligations": 150,
+  "household": "single",
+  "additional_information": "I'm on a temporary contract until March."
+}
+
+### Read it back
+GET {{base}}/applicant/applications/{{submit.response.body.id}}
+
+### "Other" treatment for a couple: description stored as `treatment`, partner income required
+POST {{base}}/applicant/applications
+Content-Type: application/json
+
+{
+  "applicant_number": "123456789",
+  "treatment": "other",
+  "treatment_other": "Hearing aids",
+  "cost": 4200,
+  "requested_term": 36,
+  "income": 3100,
+  "housing_cost": 1100,
+  "existing_obligations": 0,
+  "household": "couple",
+  "partner_income": 2100
+}
+
+### Rejected: decimal amount, out-of-range term, unknown household
+POST {{base}}/applicant/applications
+Content-Type: application/json
+
+{
+  "applicant_number": "123456789",
+  "treatment": "eye",
+  "cost": 3500.50,
+  "requested_term": 72,
+  "income": 2800,
+  "housing_cost": 900,
+  "existing_obligations": 0,
+  "household": "divorced"
+}
+
+### Retention: list applications older than 7 years (dry run, deletes nothing)
+POST {{base}}/compliance/retention/purge
+
+### Retention: actually delete them
+POST {{base}}/compliance/retention/purge?dry_run=false
