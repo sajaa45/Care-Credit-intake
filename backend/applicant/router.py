@@ -3,7 +3,7 @@ import sqlite3
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, status
 
 import db
 from assessment.free_text import screen
@@ -14,11 +14,9 @@ from .identity import hash_applicant_number
 from .schemas import (
     ApplicantOffer,
     ApplicantSearch,
-    Application,
     ApplicationStatus,
     Assessment,
     IntakeSubmission,
-    NotFoundResponse,
     ValidationErrorResponse,
 )
 
@@ -69,11 +67,33 @@ SUBMISSION_EXAMPLES = {
 }
 
 
-def _to_application(application: sqlite3.Row, assessment: sqlite3.Row | None) -> Application:
-    data = dict(application)
-    if assessment is not None:
-        data["assessment"] = Assessment.from_row(assessment)
-    return Application(**data)
+def _statuses(conn: sqlite3.Connection, where: str, value: str) -> list[ApplicationStatus]:
+    """What the applicant may see of the matching applications, newest first.
+
+    `where` is always a fixed condition written in this file; only `value` comes from the request.
+    """
+    rows = conn.execute(
+        f"""
+        SELECT a.id, a.application_number, a.treatment, a.cost, a.requested_term, a.status,
+               a.created_at AS submitted_at,
+               COALESCE(MAX(d.created_at), a.created_at) AS updated_at,
+               COUNT(d.id) > 0 AS reviewed_by_employee
+        FROM applications a
+        LEFT JOIN decisions d ON d.application_id = a.id
+        WHERE {where}
+        GROUP BY a.id
+        ORDER BY a.application_number DESC
+        """,
+        (value,),
+    ).fetchall()
+    result = []
+    for row in rows:
+        assessment = conn.execute(
+            "SELECT * FROM assessments WHERE application_id = ? ORDER BY created_at DESC LIMIT 1", (row["id"],)
+        ).fetchone()
+        offer = ApplicantOffer(**Assessment.from_row(assessment).model_dump()) if assessment else None
+        result.append(ApplicationStatus(**dict(row), offer=offer))
+    return result
 
 
 @router.get("/form", summary="Get the intake form")
@@ -89,12 +109,12 @@ def get_form() -> dict:
     "/applications",
     summary="Submit an application",
     status_code=status.HTTP_201_CREATED,
-    response_model=Application,
+    response_model=ApplicationStatus,
     responses={422: {"model": ValidationErrorResponse, "description": "One or more answers are invalid."}},
 )
 def submit_application(
     submission: Annotated[IntakeSubmission, Body(openapi_examples=SUBMISSION_EXAMPLES)],
-) -> Application:
+) -> ApplicationStatus:
     """Validate the applicant's answers, store them as a new application, and assess affordability.
 
     The assessment runs straight away and is stored with every number it used; the application's
@@ -150,7 +170,7 @@ def submit_application(
         )
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
         # Same transaction: an application is never stored without its assessment.
-        assessment = assess_and_store(conn, row)
+        assess_and_store(conn, row)
         if submission.additional_information:
             conn.execute(
                 "INSERT INTO free_text_pending (application_id, text, created_at) VALUES (?, ?, ?)",
@@ -163,8 +183,8 @@ def submit_application(
     with db.connect() as conn:
         # Stores the summary and reason, and deletes the raw text in the same transaction.
         store_free_text_review(conn, application_id, screening)
-        row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
-    return _to_application(row, assessment)
+        # The applicant gets their offer and status, never the internal calculation or screening.
+        return _statuses(conn, "a.id = ?", application_id)[0]
 
 
 @router.post(
@@ -181,43 +201,4 @@ def lookup_applications(search: ApplicantSearch) -> list[ApplicationStatus]:
     so it stays out of logs and browser history.
     """
     with db.connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT a.id, a.application_number, a.treatment, a.cost, a.requested_term, a.status,
-                   a.created_at AS submitted_at,
-                   COALESCE(MAX(d.created_at), a.created_at) AS updated_at,
-                   COUNT(d.id) > 0 AS reviewed_by_employee
-            FROM applications a
-            LEFT JOIN decisions d ON d.application_id = a.id
-            WHERE a.applicant_id = ?
-            GROUP BY a.id
-            ORDER BY a.application_number DESC
-            """,
-            (hash_applicant_number(search.applicant_number),),
-        ).fetchall()
-        result = []
-        for row in rows:
-            assessment = conn.execute(
-                "SELECT * FROM assessments WHERE application_id = ? ORDER BY created_at DESC LIMIT 1", (row["id"],)
-            ).fetchone()
-            offer = ApplicantOffer(**Assessment.from_row(assessment).model_dump()) if assessment else None
-            result.append(ApplicationStatus(**dict(row), offer=offer))
-    return result
-
-
-@router.get(
-    "/applications/{application_id}",
-    summary="Get an application",
-    response_model=Application,
-    responses={404: {"model": NotFoundResponse, "description": "No application with this id."}},
-)
-def get_application(application_id: str) -> Application:
-    """Return a stored application exactly as it was saved, with its latest assessment."""
-    with db.connect() as conn:
-        row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
-        assessment = conn.execute(
-            "SELECT * FROM assessments WHERE application_id = ? ORDER BY created_at DESC LIMIT 1", (application_id,)
-        ).fetchone()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Application not found")
-    return _to_application(row, assessment)
+        return _statuses(conn, "a.applicant_id = ?", hash_applicant_number(search.applicant_number))

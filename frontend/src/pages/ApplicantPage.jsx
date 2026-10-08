@@ -133,7 +133,7 @@ export default function ApplicantPage() {
   if (received) {
     return (
       <>
-        <ReceivedCard applicationNumber={received.application_number} receivedAt={received.created_at} />
+        <ReceivedCard applicationNumber={received.application_number} receivedAt={received.submitted_at} />
 
         {processing ? (
           <section className="result processing" aria-live="polite">
@@ -142,7 +142,7 @@ export default function ApplicantPage() {
           </section>
         ) : (
           <>
-            {received.assessment && <AssessmentResult assessment={received.assessment} status={received.status} onChangeTerm={changeTerm} />}
+            {received.offer && <AssessmentResult assessment={received.offer} status={received.status} onChangeTerm={changeTerm} />}
             <div className="actions">
               <button type="button" className="button secondary" onClick={startOver}>
                 Start a new application

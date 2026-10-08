@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from applicant.schemas import Application
+from applicant.schemas import Application, Assessment
 
 
 class DecisionRequest(BaseModel):
@@ -32,8 +32,9 @@ class Decision(BaseModel):
 class FreeTextReview(BaseModel):
     """What the language model made of the free-text answer: all that's kept once the raw text is deleted."""
 
-    status: Literal["screened", "failed", "skipped"] = Field(
-        description="`screened`; `failed` (not stored, flagged for follow-up); `skipped` (left empty)."
+    status: Literal["screened", "failed", "stubbed", "skipped"] = Field(
+        description="`screened`; `failed` (couldn't be screened: raw text deleted and the application flagged); "
+        "`stubbed` (no API key configured: not screened, not flagged, raw text deleted); `skipped` (left empty)."
     )
     summary: str | None = Field(description="Short summary for the employee, without medical detail.")
     needs_review: bool
@@ -48,5 +49,6 @@ class FreeTextReview(BaseModel):
 class ReviewedApplication(Application):
     """An application with its latest assessment, free-text review and every employee decision, oldest first."""
 
+    assessment: Assessment | None = None
     free_text_review: FreeTextReview | None = None
     decisions: list[Decision] = []

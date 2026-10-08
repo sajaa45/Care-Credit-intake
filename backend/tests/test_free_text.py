@@ -41,14 +41,30 @@ class RawTextIsDeleted(DatabaseTestCase):
         self.assertIsNotNone(review.raw_text_deleted_at)
 
     def test_failed_screening_still_deletes_the_text_and_flags_it(self):
-        # No key: the real call fails safely, and says why in the log (never the text itself).
-        with mock.patch.dict(os.environ, {"GROQ_API_KEY": ""}), self.assertLogs("uvicorn.error", "WARNING") as logs:
-            application = submit_application(IntakeSubmission(**VALID, additional_information=RAW_TEXT))
+        # With a key but no answer from Groq, the call fails safely and says why in the log (never the text).
+        with (
+            mock.patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}),
+            mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")),
+            self.assertLogs("uvicorn.error", "WARNING") as logs,
+        ):
+            submit_application(IntakeSubmission(**VALID, additional_information=RAW_TEXT))
         self.assertNotIn("diabetes", "".join(logs.output))
+        application = self.latest_application()
 
         self.assertNotIn("diabetes", self.database_dump())
         self.assertEqual(application.status, "refer")
         self.assertEqual(application_record(application.id).free_text_review.status, "failed")
+
+    def test_without_an_api_key_the_call_is_stubbed_and_says_so(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": ""}), mock.patch("urllib.request.urlopen") as urlopen:
+            submit_application(IntakeSubmission(**VALID, additional_information=RAW_TEXT))
+        application = self.latest_application()
+
+        urlopen.assert_not_called()
+        self.assertEqual(application.free_text_review.status, "stubbed")
+        self.assertIn("GROQ_API_KEY", application.free_text_review.reason)
+        self.assertEqual(application.status, "accept")  # a stub never changes the decision
+        self.assertNotIn("diabetes", self.database_dump())
 
     def test_text_left_behind_by_a_crash_is_deleted_at_startup(self):
         # The state after a crash: application and raw text stored, screening never finished.

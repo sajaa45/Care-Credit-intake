@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS free_text_pending (
 -- The model's reading of the free-text answer, one per application: what's kept once the raw text is gone.
 CREATE TABLE IF NOT EXISTS free_text_reviews (
     application_id      TEXT PRIMARY KEY REFERENCES applications (id) ON DELETE CASCADE,
-    status              TEXT NOT NULL CHECK (status IN ('screened', 'failed', 'skipped')),
+    status              TEXT NOT NULL CHECK (status IN ('screened', 'failed', 'stubbed', 'skipped')),
     summary             TEXT,
     needs_review        INTEGER NOT NULL,
     reason              TEXT NOT NULL,

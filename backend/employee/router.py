@@ -1,8 +1,8 @@
 import sqlite3
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 import db
 from applicant.schemas import Assessment, NotFoundResponse, ValidationErrorResponse
@@ -39,13 +39,15 @@ def _load(conn: sqlite3.Connection, applications: list[sqlite3.Row]) -> list[Rev
 
 
 @router.get("/applications", summary="List applications", response_model=list[ReviewedApplication])
-def list_applications(status: Status | None = None) -> list[ReviewedApplication]:
+def list_applications(
+    status_filter: Annotated[Status | None, Query(alias="status", description="Only applications with this status.")] = None,
+) -> list[ReviewedApplication]:
     """All applications, newest first, with their assessment and decisions. Filter with `status`, e.g. `refer`."""
     query = "SELECT * FROM applications"
     params: tuple = ()
-    if status:
+    if status_filter:
         query += " WHERE status = ?"
-        params = (status,)
+        params = (status_filter,)
     with db.connect() as conn:
         return _load(conn, conn.execute(query + " ORDER BY created_at DESC", params).fetchall())
 

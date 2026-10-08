@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 const ROLES = [
   { to: "/applicant", title: "Applicant", text: "Apply for financing of a medical treatment." },
   { to: "/employee", title: "Employee", text: "Review applications and record decisions." },
-  { to: "/compliance", title: "Compliance", text: "Inspect records and manage retention." },
+  { to: "/compliance", title: "Compliance", text: "Inspect the full record of any application." },
 ];
 
 export default function Home() {

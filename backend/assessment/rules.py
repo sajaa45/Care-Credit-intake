@@ -24,7 +24,9 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from applicant.form import INTEGER_RANGES, Household
 
-# Bump whenever anything below changes, so a stored assessment always says which rule produced it.
+# Stored with every assessment. The numbers are stored too, but the logic isn't, so bump this whenever
+# the formula, thresholds, norms, rate, rounding or term suggestion change: it's how a decision years
+# from now can still be traced to the rule that made it.
 RULE_VERSION = "2026-10-08.1"
 
 ANNUAL_INTEREST_RATE = Decimal("0.089")
@@ -130,7 +132,7 @@ def outcome_for(instalment: Decimal, room: Decimal) -> str:
 
 
 @dataclass(frozen=True)
-class Assessment:
+class AssessmentResult:
     outcome: str
     reason: str
     room: Room
@@ -142,7 +144,7 @@ class Assessment:
     suggested_instalment: Decimal | None
 
 
-def assess(applicant: Applicant, principal: int, requested_term: int) -> Assessment:
+def assess(applicant: Applicant, principal: int, requested_term: int) -> AssessmentResult:
     room = available_room(applicant)
     instalment = monthly_instalment(principal, requested_term)
     refer_limit = room.available * (1 + REFER_MARGIN)
@@ -176,7 +178,7 @@ def assess(applicant: Applicant, principal: int, requested_term: int) -> Assessm
             f"by more than 10% (limit €{to_cents(refer_limit)})."
         )
 
-    return Assessment(
+    return AssessmentResult(
         outcome=outcome,
         reason=reason,
         room=room,

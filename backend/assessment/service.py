@@ -19,7 +19,7 @@ from .rules import (
 )
 
 
-def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> sqlite3.Row:
+def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> None:
     """Assess the application, store the assessment and set the application's status to the outcome."""
     applicant = Applicant(
         income=application["income"],
@@ -72,7 +72,6 @@ def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> sqli
         ],
     }
 
-    assessment_id = str(uuid.uuid4())
     conn.execute(
         """
         INSERT INTO assessments (
@@ -84,7 +83,7 @@ def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> sqli
         )
         """,
         {
-            "id": assessment_id,
+            "id": str(uuid.uuid4()),
             "application_id": application["id"],
             "rule_version": RULE_VERSION,
             "outcome": result.outcome,
@@ -99,7 +98,6 @@ def assess_and_store(conn: sqlite3.Connection, application: sqlite3.Row) -> sqli
         },
     )
     conn.execute("UPDATE applications SET status = ? WHERE id = ?", (result.outcome, application["id"]))
-    return conn.execute("SELECT * FROM assessments WHERE id = ?", (assessment_id,)).fetchone()
 
 
 def store_free_text_review(conn: sqlite3.Connection, application_id: str, screening: ScreeningOutcome) -> None:

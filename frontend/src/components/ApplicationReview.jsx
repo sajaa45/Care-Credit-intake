@@ -86,6 +86,20 @@ export function Calculation({ assessment }) {
 
 export function FreeTextReview({ review }) {
   if (!review || review.status === "skipped") return null;
+  if (review.status === "stubbed") {
+    return (
+      <section className="free-text-review stubbed">
+        <h3>
+          Free-text answer <span className="badge">Not screened: no API key</span>
+        </h3>
+        <p>{review.summary}</p>
+        <p>{review.reason}</p>
+        {review.raw_text_deleted_at && (
+          <p className="muted">The applicant's own words were deleted ({dateTime(review.raw_text_deleted_at)}).</p>
+        )}
+      </section>
+    );
+  }
   return (
     <section className={`free-text-review${review.needs_review ? " flagged" : ""}`}>
       <h3>
@@ -134,7 +148,7 @@ export function History({ decisions }) {
   );
 }
 
-function DecisionForm({ application, onUpdated }) {
+function DecisionForm({ application, title, onSaved, onCancel }) {
   const [outcome, setOutcome] = useState("");
   const [comment, setComment] = useState("");
   const [employee, setEmployee] = useState(readSavedName);
@@ -165,9 +179,7 @@ function DecisionForm({ application, onUpdated }) {
       } catch {
         // Remembering the name is only a convenience.
       }
-      setOutcome("");
-      setComment("");
-      onUpdated(data);
+      onSaved(data);
     } catch {
       setError("Couldn't reach the server. Nothing was saved.");
     } finally {
@@ -177,7 +189,7 @@ function DecisionForm({ application, onUpdated }) {
 
   return (
     <form className="decision-form" onSubmit={handleSubmit} noValidate>
-      <h3>Add a decision</h3>
+      <h3>{title}</h3>
       <div className="options two">
         {["accept", "decline"].map((value) => (
           <label key={value} className="option">
@@ -210,14 +222,22 @@ function DecisionForm({ application, onUpdated }) {
         />
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <button type="submit" className="button" disabled={saving}>
-        {saving ? "Saving…" : "Save decision"}
-      </button>
+      <div className="actions">
+        <button type="submit" className="button" disabled={saving}>
+          {saving ? "Saving…" : "Save decision"}
+        </button>
+        <button type="button" className="button secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
 
 export default function ApplicationReview({ application, onUpdated }) {
+  // The decision form only appears when the employee chooses to act.
+  const [deciding, setDeciding] = useState(false);
+  const title = application.decisions.length > 0 ? "Change the decision" : "Add a decision";
   return (
     <div className="review">
       <div className="review-columns">
@@ -226,7 +246,21 @@ export default function ApplicationReview({ application, onUpdated }) {
       </div>
       <FreeTextReview review={application.free_text_review} />
       <History decisions={application.decisions} />
-      <DecisionForm application={application} onUpdated={onUpdated} />
+      {deciding ? (
+        <DecisionForm
+          application={application}
+          title={title}
+          onSaved={(updated) => {
+            onUpdated(updated);
+            setDeciding(false);
+          }}
+          onCancel={() => setDeciding(false)}
+        />
+      ) : (
+        <button type="button" className="button" onClick={() => setDeciding(true)}>
+          {title}
+        </button>
+      )}
     </div>
   );
 }

@@ -169,7 +169,7 @@ class Assessment(BaseModel):
 
 
 class Application(BaseModel):
-    """An application as stored, with its latest assessment."""
+    """An application exactly as stored."""
 
     id: str = Field(description="Application reference (UUID).")
     applicant_id: str = Field(description="Keyed hash (HMAC-SHA256) of the applicant's ID number; never the number itself.")
@@ -189,7 +189,6 @@ class Application(BaseModel):
         examples=["accept"],
     )
     created_at: datetime = Field(description="When the application was received (UTC).")
-    assessment: Assessment | None = None
 
 
 class ApplicantSearch(BaseModel):

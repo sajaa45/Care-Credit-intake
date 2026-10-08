@@ -3,14 +3,13 @@ import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
 
 import db
 from applicant.identity import hash_applicant_number
 from applicant.schemas import ApplicantSearch, Application, Assessment, NotFoundResponse
 from employee.schemas import Decision, FreeTextReview
 
-from .schemas import AnsweredQuestion, ApplicationSummary, ComplianceRecord, TimelineEvent
+from .schemas import AnsweredQuestion, ApplicationSummary, ComplianceRecord, PurgeResult, TimelineEvent
 
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
 
@@ -67,7 +66,10 @@ def _answers(
                     "Kept: the summary and reason under 'Free-text answer'."
                 )
             else:
-                note = f"Raw text deleted ({review.raw_text_deleted_at:%Y-%m-%d %H:%M} UTC) without being screened."
+                why = " (no API key configured)" if review.status == "stubbed" else ""
+                note = (
+                    f"Raw text deleted ({review.raw_text_deleted_at:%Y-%m-%d %H:%M} UTC) without being screened{why}."
+                )
         elif field == "applicant_number":
             answer = None
             note = f"Not stored. Kept only as a keyed hash: {application['applicant_id']}"
@@ -128,7 +130,7 @@ def application_record(application_id: str) -> ComplianceRecord:
         timeline.append(
             TimelineEvent(
                 at=review.created_at,
-                event=f"Free text {review.status}: {flag}",
+                event="Free text not screened (no API key)" if review.status == "stubbed" else f"Free text {review.status}: {flag}",
                 detail=f"{review.model}, prompt {review.prompt_version}. {review.reason}{referred}",
             )
         )
@@ -151,7 +153,7 @@ def application_record(application_id: str) -> ComplianceRecord:
     timeline.sort(key=lambda event: event.at)
 
     return ComplianceRecord(
-        application=Application(**dict(application), assessment=assessments[-1] if assessments else None),
+        application=Application(**dict(application)),
         form_id=form["id"],
         answers=_answers(json.loads(form["definition"]), application, review),
         assessments=assessments,
@@ -169,12 +171,6 @@ def retention_cutoff(now: datetime) -> datetime:
         return now.replace(year=now.year - RETENTION_YEARS)
     except ValueError:
         return now.replace(year=now.year - RETENTION_YEARS, day=28)
-
-
-class PurgeResult(BaseModel):
-    cutoff: datetime = Field(description="Applications created before this moment are past retention.")
-    dry_run: bool
-    application_ids: list[str] = Field(description="The applications that were (or, in a dry run, would be) deleted.")
 
 
 @router.post("/retention/purge", summary="Delete applications past the retention period", response_model=PurgeResult)

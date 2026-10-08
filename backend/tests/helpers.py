@@ -10,6 +10,7 @@ import db
 from applicant.router import submit_application
 from applicant.schemas import IntakeSubmission
 from assessment.free_text import ScreeningOutcome
+from employee.router import list_applications
 
 # A single applicant whose €3,500 over 24 months is accepted (room €600, instalment €159.74).
 VALID = dict(
@@ -37,10 +38,15 @@ class DatabaseTestCase(unittest.TestCase):
         db.init_db()
 
     def submit(self, screening=NOTHING_WRITTEN, **answers):
-        """Submit an application with the model call replaced: by a fixed result, or a function."""
+        """Submit an application with the model call replaced (by a fixed result, or a function),
+        and return it as an employee sees it: the applicant's response leaves out the internals."""
         replacement = {"side_effect": screening} if callable(screening) else {"return_value": screening}
         with mock.patch("applicant.router.screen", **replacement):
-            return submit_application(IntakeSubmission(**{**VALID, **answers}))
+            submit_application(IntakeSubmission(**{**VALID, **answers}))
+        return self.latest_application()
+
+    def latest_application(self):
+        return list_applications()[0]
 
     def database_dump(self) -> str:
         """Everything in the database as SQL text, to check what is (not) stored anywhere."""

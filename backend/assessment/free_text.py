@@ -4,8 +4,10 @@ It returns a short summary for the employee and whether a human needs to look
 at something (and why), without medical detail. The raw text is only held
 until this call is done, then deleted; the summary and reason are what's kept.
 
-No key, a network error or an unusable answer all lead to the same safe result:
-the raw text is deleted anyway and the application is flagged so an employee follows up.
+Without a GROQ_API_KEY the call is stubbed: nothing is sent, the result says plainly
+that the text wasn't screened and how to add a key, and the decision isn't affected.
+With a key, a network error or an unusable answer leads to a safe failure: the raw
+text is deleted anyway and the application is flagged so an employee follows up.
 """
 
 import json
@@ -80,7 +82,7 @@ class Screening(BaseModel):
 
 
 class ScreeningOutcome(BaseModel):
-    status: str  # "screened", "failed" or "skipped"
+    status: str  # "screened", "failed", "stubbed" (no API key) or "skipped" (empty)
     summary: str | None
     needs_review: bool
     reason: str
@@ -92,11 +94,21 @@ FAILED_REASON = (
 )
 
 
+STUB_SUMMARY = "Not screened: no Groq API key is configured, so the language model was not called."
+STUB_REASON = (
+    "To see the real summary and flag, add your own free Groq API key as GROQ_API_KEY in backend/.env "
+    "(see the README) and restart the backend. The prompt that would be sent is in "
+    "backend/assessment/free_text.py."
+)
+
+
 def screen(text: str) -> ScreeningOutcome:
     if not text:
         return ScreeningOutcome(
             status="skipped", summary=None, needs_review=False, reason="The applicant left this empty."
         )
+    if not os.environ.get("GROQ_API_KEY"):
+        return ScreeningOutcome(status="stubbed", summary=STUB_SUMMARY, needs_review=False, reason=STUB_REASON)
     try:
         result = _call_model(text)
     except (OSError, ValueError, KeyError, IndexError, ValidationError) as error:
@@ -113,9 +125,7 @@ def screen(text: str) -> ScreeningOutcome:
 
 
 def _call_model(text: str) -> Screening:
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is not set")
+    api_key = os.environ["GROQ_API_KEY"]
     body = {
         "model": MODEL,
         "temperature": 0,

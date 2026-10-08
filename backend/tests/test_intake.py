@@ -2,7 +2,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from applicant.schemas import IntakeSubmission
+from applicant.schemas import ApplicantOffer, ApplicationStatus, IntakeSubmission
 from helpers import VALID
 
 
@@ -39,6 +39,13 @@ class Validation(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 submission(applicant_number=value)
         self.assertEqual(submission(applicant_number="0042").applicant_number, "0042")
+
+
+class ApplicantResponse(unittest.TestCase):
+    def test_applicant_sees_their_offer_but_never_the_internal_calculation(self):
+        visible = set(ApplicationStatus.model_fields) | set(ApplicantOffer.model_fields)
+        for internal in ("id", "applicant_id", "calculation", "available_room", "reason", "income"):
+            self.assertNotIn(internal, visible)
 
 
 if __name__ == "__main__":

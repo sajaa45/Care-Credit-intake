@@ -12,27 +12,31 @@ It covers three roles, each with its own screen in the React frontend and its ow
 
 ## Running it
 
-Requirements: Python 3.10+ (developed on 3.14) and Node.js 22+ (developed on 24).
+Requirements: Python 3.10+ (developed on 3.14) and Node.js 22+ (developed on 24). Run the backend and the frontend in two separate terminals.
 
 ### Backend (FastAPI + SQLite)
 
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env          # then add your Groq key (see below)
+cp .env.example .env           # then add your Groq key (see below)
 uvicorn main:app --reload --env-file .env
 ```
+
+Next time, only `source .venv/bin/activate` and the `uvicorn` line are needed. The virtual environment (`.venv/`) is git-ignored.
 
 - API and Swagger UI: http://localhost:8000/docs (`/` redirects there)
 - The SQLite database (`backend/intake.db`) is created on first start. It's git-ignored, so everyone gets their own. After a schema change, delete it and restart.
 
-**To test the free-text screening, use your own free Groq API key.** No key is included in the repository. Create one at https://console.groq.com/keys (free account, no payment details needed), then put it in `backend/.env` as `GROQ_API_KEY=gsk_...` and restart the backend. Without a key everything else works, but any application with free text fails screening and is sent to an employee for review.
+**To test the free-text screening, use your own free Groq API key.** No key is included in the repository. Create one at https://console.groq.com/keys (free account, no payment details needed), then put it in `backend/.env` as `GROQ_API_KEY=gsk_...` and restart the backend. Without a key the model call is **stubbed**: nothing is sent, the decision isn't affected, and the employee and compliance screens say "Not screened: no API key" with instructions to add one. The backend also logs a warning at startup.
 
 Environment variables (`backend/.env`, git-ignored; see `.env.example`):
 
 | Variable | Purpose |
 |---|---|
-| `GROQ_API_KEY` | Key for the free-text screening call. Without it, every free-text answer fails screening: the text is deleted and the application is flagged for an employee. |
+| `GROQ_API_KEY` | Your own Groq key for the free-text screening call. Without it, the call is stubbed (not screened, not flagged, and the raw text is still deleted). |
 | `GROQ_MODEL` | Optional, defaults to `openai/gpt-oss-120b`. |
 | `APPLICANT_ID_KEY` | Optional for the prototype. Secret used to hash applicant ID numbers; without it a built-in dev key is used. In production it must be set (otherwise anyone with the code could hash a guessed ID number and find that person's applications), kept secret, and never changed, because changing it unlinks earlier applications. |
 
@@ -46,10 +50,18 @@ npm run dev
 
 Open http://localhost:5173. The dev server forwards `/api/*` to the backend on port 8000, so there's nothing else to configure.
 
+### A quick walkthrough
+
+1. **Applicant** → fill in the form. With income €2,800, housing €900, obligations €150, single, €3,500 over 24 months you get an accept with the full schedule. With €5,000 over 12 months on income €2,000, housing €600 and no other loans you get a decline with a suggested term of 22 months.
+2. **Employee** → open the application under "All", read the calculation and the free-text panel, and use **Add decision** to overturn it with a comment.
+3. **Applicant → "Check the status of your applications"** → enter the same ID number and see the employee's decision.
+4. **Compliance** → search by that ID number and open the full record: questions, answers, calculation, decisions and timeline.
+
 ### Tests
 
 ```bash
 cd backend
+source .venv/bin/activate
 python3 -m unittest discover -s tests
 ```
 
@@ -60,7 +72,7 @@ No extra packages: tests call the endpoint functions directly, each with its own
 | `test_rules.py` | The available-room formula (including the couple split), the exact accept/refer/decline boundaries, and the term suggestion |
 | `test_schedule.py` | About 6,000 schedules: closing balance exactly 0, instalments = principal + interest to the cent |
 | `test_intake.py` | Whole numbers only, product ranges, partner income for couples, "other" needs a description, ID digits only |
-| `test_free_text.py` | The raw text is held during screening and gone after (also on failure and after a crash), and a flag only ever escalates |
+| `test_free_text.py` | The raw text is held during screening and gone after (also on failure, without a key, and after a crash), the no-key stub, and a flag only ever escalates |
 | `test_employee.py` | Overturning in either direction with history kept, deciding referred applications, a reason and name required |
 | `test_compliance.py` | The record shows question wording, answers, every calculation step, decisions and timeline; the retention cutoff (including 29 February) and the purge |
 
@@ -145,7 +157,8 @@ Applicant submits free text
 - **What gets flagged.** The memo's examples (temporary contract, partner on unpaid leave, expected drop in income) plus benefits ending, arrears or new debts, separation, irregular income, being unable to work (never the condition), and signs of pressure from someone else.
 - **Medical detail.** The model is told never to put medical specifics in the summary or reason, and the raw text is deleted right after screening. If the server stops between storing and screening, any leftover raw text is deleted and flagged at the next startup.
 - **The model can only escalate.** A flag on an application the rule accepted turns it into "refer", so a person looks before the applicant is told yes. The model never accepts or declines anything, and the rule's own result stays on record.
-- **Failure is safe.** With no key, a network error or an unusable answer, the raw text is deleted anyway and the application is flagged with "ask the applicant about their situation". The reason for the failure is logged (never the text).
+- **No key: stubbed.** Without `GROQ_API_KEY` no call is made. The result is clearly labelled "Not screened: no API key", tells the viewer how to add their own free key, and points to the prompt in `free_text.py`. It doesn't flag anything or change the decision, and the raw text is still deleted.
+- **Failure is safe.** With a key but a network error, timeout or unusable answer, the raw text is deleted anyway and the application is flagged with "ask the applicant about their situation". The reason for the failure is logged (never the text).
 - **Prompt injection.** The applicant's text is marked as data. If it tries to give instructions, it gets flagged ("The text contains instructions aimed at the screening system").
 - Every screening stores the model and a `PROMPT_VERSION`.
 
@@ -158,7 +171,7 @@ After submitting: "We've received your application", then after a short pause (3
 - **Decline with an alternative**: the longer term that would work, with a one-click retry.
 - **Decline with no alternative**: a message written for someone who just learned they can't get their treatment paid for. It acknowledges that, explains why in plain words (no internal numbers), says it's not a judgement and doesn't stop them from reapplying, and lists concrete next steps: ask the clinic about instalments or doing it in stages, check the health insurer, reapply if things change, and get free money advice from the municipality or geldfit.nl. It also says the decision was automatic and that they can ask for a person to review it.
 
-The applicant never sees the reference ID, the available room, the norms or the screening summary.
+The applicant never sees the reference ID, the available room, the norms or the screening summary, not even in the API responses: the applicant endpoints return only the status and the offer (instalment, totals, schedule, suggested term).
 
 **Checking status later.** At `/applicant/status` the applicant enters their ID number and sees each of their applications: number, treatment, amount, term, and the current status in plain words (received, accepted, being reviewed, not approved). That includes a status an employee changed afterwards, with "reviewed by a colleague" and when. Clicking an application opens the same "received" and result view they saw after submitting, with the instalment, totals and schedule. If an employee decided, it shows that decision instead of the system's. Employee names, comments and the calculation stay internal. Like the compliance search, the ID number goes in the request body, not the URL.
 
@@ -166,7 +179,7 @@ The applicant never sees the reference ID, the available room, the norms or the 
 
 - Tabs: **To review** (referred), All, Accepted, Declined. Each row shows status, treatment, amount, term, the applicant hash prefix, the application number, and markers for "decided by employee" and "⚑ free text flagged".
 - Expanding a row shows the answers, the calculation line by line, the schedule, the free-text summary and reason, and the decision history.
-- **Add a decision**: accept or decline, a required comment and the employee's name. It works in either direction and on any status. Decisions are append-only (`decisions` table). Each stores who made it, the previous status, the new outcome, the comment and the time, and the application's status becomes the latest decision.
+- **Add decision** (or **Change the decision** once one exists) opens the form only when the employee chooses to act: accept or decline, a required comment and the employee's name. It works in either direction and on any status. Decisions are append-only (`decisions` table). Each stores who made it, the previous status, the new outcome, the comment and the time, and the application's status becomes the latest decision.
 
 ### 7. Compliance
 
@@ -186,8 +199,7 @@ The applicant never sees the reference ID, the available room, the norms or the 
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/applicant/form` | The form: questions, options, ranges and form id |
-| POST | `/applicant/applications` | Submit, assess and screen; returns the application with its assessment |
-| GET | `/applicant/applications/{id}` | One application with its latest assessment |
+| POST | `/applicant/applications` | Submit, assess and screen; returns the status and offer (no internal calculation) |
 | POST | `/applicant/applications/lookup` | An applicant's own applications and their current status, by ID number |
 | GET | `/employee/applications?status=refer` | All applications (optionally by status) with assessment, screening and decisions |
 | POST | `/employee/applications/{id}/decisions` | Record an accept or decline with a comment |
@@ -206,9 +218,9 @@ backend/
   assessment/              affordability rule + schedule, storing assessments, free-text screening
   employee/                dashboard list and decisions
   compliance/              record, search, retention
-  tests/                   rule and schedule tests
+  tests/                   rules, schedule, intake, free text, employee and compliance
 frontend/src/
-  pages/                   Home, Applicant, Employee, Compliance
+  pages/                   Home, Applicant form, Applicant status, Employee, Compliance
   components/              form fields, result screens, review panels, schedule table
 ```
 
@@ -252,18 +264,31 @@ Smaller additions: linking repeat applicants (decision 3), the one-click retry w
   5. For retention, keep the personal data in a separate table that can be deleted, and keep only hashes in the chain. Old records can then be erased without breaking verification, and the purge itself becomes an entry.
 - **The free text goes to Groq unredacted.** It may contain health data (special category under GDPR), sent to a US provider. Production needs a data processing agreement and a transfer assessment, or an EU-hosted model.
 - **Compliance loses the applicant's exact words.** That's by design (decision 2). Compliance should confirm that a summary and reason are an acceptable record.
-- **No authentication.** Employee names are typed in, so "what any employee did" is self-reported. The retention purge can be called by anyone. Both need real identities and roles.
+- **Authentication and authorization (not built).** There are no logins: anyone who can reach the API can use every endpoint, employee names are typed in (so "what any employee did" is self-reported), and anyone can call the retention purge. Before real use:
+  - Employees and compliance sign in through the company's identity provider (SSO with MFA). Decisions record the signed-in user, never a typed name.
+  - Role-based access: applicants only see their own applications, employees can decide but not purge, compliance can read every record but not change one. The purge needs a dedicated role and, ideally, a second person's approval.
+  - Every read of a record is logged too (who looked at which dossier, when), since access to financial and health-adjacent data is itself something a regulator asks about.
+  - HTTPS everywhere, encryption at rest, and the API not reachable from outside except for the applicant endpoints.
 - **Retention start date.** The memo says 7 years after the loan is *closed*. That needs a loan lifecycle, and the clock should start there.
 - **Business confirmation needed on the rule**: the couple split (decision 1), the refer band (10% of room vs. of instalment), and whether a partner's debts should be asked.
 - **Applicants aren't told about employee decisions.** They can look up the current status themselves, but nothing notifies them when an employee changes it.
-- **The ID number is the only "password" for the status lookup.** Anyone who knows someone's ID number can see their applications' status (not the calculation or the free text). Production needs real sign-in, such as DigiD or a link sent by email, and rate limiting.
+- **Protecting the ID number.** Today the ID number is any digits the applicant types, and it's also the only "password" for the status lookup: anyone who knows someone's ID number can see their applications' status (not the calculation or the free text), and anyone can apply under someone else's number. For real:
+  - Verify identity at intake and for status checks (DigiD or iDIN, or at least a one-time link or code sent to a verified email or phone), and add rate limiting and lockout to the lookup.
+  - Decide with legal which identifier may be used at all. The BSN may only be processed where the law allows it, so a customer number may be the right key.
+  - Keep `APPLICANT_ID_KEY` in a secrets manager or HSM, never in a file, with a documented plan for rotating it (re-hashing existing records), since changing it unlinks everyone's history.
 - **The decline text** promises a human review on request. There needs to be a real channel for that, and legal should review the wording.
 
-## Status
+## Status and time spent
 
 Built: everything in the memo, including both optional parts (the UI, and handling more than one application), except the tamper-evident log, which is described above.
+
+**Time spent: about 5 hours**, within the 6-hour limit. About 30 minutes of that went into reading the assignment and planning before writing code: how to read the affordability formula (especially for couples), how to make the schedule add up to the cent, and what the applicant, employee and compliance screens each needed to show.
+
+I found the assignment genuinely interesting. It looks like a form and a formula, but every part of it (the money, the medical text, the record a regulator relies on, and the moment someone gets declined) has real consequences, and there is a lot more worth improving.
 
 Next steps I'd take:
 - When no term up to 60 months fits but there is some room, offer a smaller amount the applicant could borrow.
 - Tests over HTTP (status codes, error format), which would need an HTTP test client.
 - The tamper-evident log described above.
+- Authentication, roles and identity verification, as described above.
+- Notifying the applicant when an employee changes their outcome.

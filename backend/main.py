@@ -1,3 +1,5 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -21,6 +23,11 @@ repaid over 6–60 months.
 async def lifespan(app: FastAPI):
     db.init_db()
     discard_unscreened_free_text()
+    if not os.environ.get("GROQ_API_KEY"):
+        logging.getLogger("uvicorn.error").warning(
+            "GROQ_API_KEY is not set: free-text screening is stubbed. Add your own key to backend/.env "
+            "and start with --env-file .env to use the real model."
+        )
     yield
 
 

@@ -267,7 +267,7 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .decision-form { margin-top: 8px; padding: 16px; border-radius: 8px; background: var(--bg); }
 .decision-form h3 { margin-top: 0; }
 .decision-form > label { display: block; margin: 12px 0 4px; font-weight: 600; }
-.decision-form .button { margin-top: 12px; }
+.decision-form .actions { margin-top: 12px; }
 .options.two { grid-template-columns: repeat(2, minmax(0, 160px)); }
 
 /* Repayment schedule */
@@ -310,6 +310,7 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 /* Free-text review */
 .free-text-review { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; }
 .free-text-review.flagged { border-color: #e7c27d; background: #fffaf0; }
+.free-text-review.stubbed { border-style: dashed; background: var(--bg); }
 .free-text-review h3 { margin-top: 4px; }
 .free-text-review p { margin: 0 0 8px; }
 

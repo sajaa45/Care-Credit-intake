@@ -42,3 +42,9 @@ class ComplianceRecord(BaseModel):
     free_text_review: FreeTextReview | None
     decisions: list[Decision] = Field(description="Every employee decision, oldest first.")
     timeline: list[TimelineEvent] = Field(description="Everything that happened, in order.")
+
+
+class PurgeResult(BaseModel):
+    cutoff: datetime = Field(description="Applications created before this moment are past retention.")
+    dry_run: bool
+    application_ids: list[str] = Field(description="The applications that were (or, in a dry run, would be) deleted.")
