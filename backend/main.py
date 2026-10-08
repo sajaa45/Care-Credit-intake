@@ -8,6 +8,7 @@ import db
 from applicant.router import router as applicant_router
 from applicant.schemas import FieldError, ValidationErrorResponse
 from compliance.router import router as compliance_router
+from employee.router import router as employee_router
 
 DESCRIPTION = """
 Prototype API for a care credit online intake: medical treatment financing of €500–25,000,
@@ -28,11 +29,13 @@ app = FastAPI(
     lifespan=lifespan,
     openapi_tags=[
         {"name": "Applicant intake", "description": "The form the applicant fills in and its submissions."},
+        {"name": "Employee", "description": "Reviewing applications and recording decisions."},
         {"name": "Compliance", "description": "Record keeping and retention."},
     ],
     swagger_ui_parameters={"displayRequestDuration": True, "tryItOutEnabled": True, "defaultModelsExpandDepth": 0},
 )
 app.include_router(applicant_router)
+app.include_router(employee_router)
 app.include_router(compliance_router)
 
 
@@ -52,6 +55,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             message = str(err["ctx"]["error"])
         elif err["type"] == "string_pattern_mismatch":
             message = "Please use digits only."
+        elif err["type"] in ("missing", "string_too_short"):
+            message = "Please fill this in."
         elif err["type"] == "string_type":
             message = 'Please send this as text in quotes, e.g. "123456789".'
         elif err["type"] == "int_type":

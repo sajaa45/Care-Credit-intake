@@ -77,7 +77,7 @@ def _choice_question(field: str, label: str, labels: dict) -> dict:
 QUESTIONS = [
     {
         "field": "applicant_number",
-        "label": "Your applicant number",
+        "label": "Your ID number",
         "type": "digits",
         "required": True,
         "max_length": APPLICANT_NUMBER_MAX_LENGTH,

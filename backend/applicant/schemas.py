@@ -1,5 +1,8 @@
+import json
+import sqlite3
 from datetime import datetime
-from typing import Annotated
+from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -42,7 +45,7 @@ class IntakeSubmission(BaseModel):
         str,
         StringConstraints(strip_whitespace=True, pattern=r"^[0-9]+$", max_length=APPLICANT_NUMBER_MAX_LENGTH),
         Field(
-            description="The applicant's own number (digits only, sent as a string so leading zeros are kept). "
+            description="The applicant's ID number (digits only, sent as a string so leading zeros are kept). "
             "Only a keyed hash is stored; submissions with the same number are linked to the same applicant.",
             examples=["123456789"],
         ),
@@ -112,11 +115,64 @@ class IntakeSubmission(BaseModel):
         return self.treatment.value
 
 
+class ScheduleRow(BaseModel):
+    month: int
+    opening_balance: Decimal
+    instalment: Decimal
+    interest: Decimal
+    principal: Decimal
+    closing_balance: Decimal
+
+
+class Assessment(BaseModel):
+    """The result of the affordability rule, with every number it was based on."""
+
+    outcome: Literal["accept", "refer", "decline"]
+    reason: str = Field(description="The rule that applied, in words, with the numbers.")
+    rule_version: str = Field(description="Version of the rule that produced this outcome.")
+    term: int = Field(description="The term assessed, in months (the requested term).")
+    instalment: Decimal = Field(description="Monthly instalment for `term` at 8.9% per year (annuity), in euros.")
+    available_room: Decimal = Field(
+        description="income - housing share - existing obligations - norm share, in euros. "
+        "Housing and the living standard norm are split by the applicant's share of household income."
+    )
+    suggested_term: int | None = Field(
+        description="If the requested term isn't accepted: the shortest longer term that would be. Null if none fits."
+    )
+    suggested_instalment: Decimal | None
+    total_repayable: Decimal | None = Field(
+        description="Sum of all instalments in `schedule`: exactly principal + total_interest. "
+        "Null for assessments made before schedules existed."
+    )
+    total_interest: Decimal | None
+    schedule: list[ScheduleRow] | None = Field(
+        description="Month by month for `term`. The final instalment absorbs rounding, so the last "
+        "closing balance is exactly 0.00."
+    )
+    calculation: dict = Field(description="All inputs, constants and intermediate steps, to redo the calculation by hand.")
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "Assessment":
+        calculation = json.loads(row["calculation"])
+        steps = calculation["steps"]
+        return cls(
+            **{
+                **dict(row),
+                # The stored record includes the schedule; it's returned once, as `schedule`.
+                "calculation": {key: value for key, value in calculation.items() if key != "schedule"},
+                "total_repayable": steps.get("total_repayable"),
+                "total_interest": steps.get("total_interest"),
+                "schedule": calculation.get("schedule"),
+            }
+        )
+
+
 class Application(BaseModel):
-    """One row of the applications table, key for key."""
+    """An application as stored, with its latest assessment."""
 
     id: str = Field(description="Application reference (UUID).")
-    applicant_id: str = Field(description="Keyed hash (HMAC-SHA256) of the applicant number; never the number itself.")
+    applicant_id: str = Field(description="Keyed hash (HMAC-SHA256) of the applicant's ID number; never the number itself.")
     application_number: int = Field(description="1 for the applicant's first application, 2 for the second, and so on.")
     treatment: str = Field(description="`dental`, `eye`, `orthodontic`, or the applicant's own description.")
     cost: int
@@ -127,8 +183,13 @@ class Application(BaseModel):
     household: Household
     partner_income: int | None = Field(description="Null when the household has no partner.")
     additional_information: str
-    status: str = Field(description="Where the application is in the process.", examples=["submitted"])
+    status: str = Field(
+        description="`submitted`, the assessment outcome (`accept`, `refer`, `decline`), "
+        "or the latest employee decision (`accept`, `decline`).",
+        examples=["accept"],
+    )
     created_at: datetime = Field(description="When the application was received (UTC).")
+    assessment: Assessment | None = None
 
 
 class FieldError(BaseModel):

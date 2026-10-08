@@ -1,13 +1,15 @@
+import sqlite3
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, status
 
 import db
+from assessment.service import assess_and_store
 
 from .form import form_definition
 from .identity import hash_applicant_number
-from .schemas import Application, IntakeSubmission, NotFoundResponse, ValidationErrorResponse
+from .schemas import Application, Assessment, IntakeSubmission, NotFoundResponse, ValidationErrorResponse
 
 router = APIRouter(prefix="/applicant", tags=["Applicant intake"])
 
@@ -43,7 +45,7 @@ SUBMISSION_EXAMPLES = {
         "value": {**_VALID, "household": "couple"},
     },
     "invalid": {
-        "summary": "Invalid: letters in applicant number, decimal amount, term too long, unknown household",
+        "summary": "Invalid: letters in ID number, decimal amount, term too long, unknown household",
         "description": "Returns 422 with one message per field.",
         "value": {
             **_VALID,
@@ -54,6 +56,13 @@ SUBMISSION_EXAMPLES = {
         },
     },
 }
+
+
+def _to_application(application: sqlite3.Row, assessment: sqlite3.Row | None) -> Application:
+    data = dict(application)
+    if assessment is not None:
+        data["assessment"] = Assessment.from_row(assessment)
+    return Application(**data)
 
 
 @router.get("/form", summary="Get the intake form")
@@ -75,7 +84,10 @@ def get_form() -> dict:
 def submit_application(
     submission: Annotated[IntakeSubmission, Body(openapi_examples=SUBMISSION_EXAMPLES)],
 ) -> Application:
-    """Validate the applicant's answers and store them as a new application with status `submitted`.
+    """Validate the applicant's answers, store them as a new application, and assess affordability.
+
+    The assessment runs straight away and is stored with every number it used; the application's
+    `status` becomes the outcome (`accept`, `refer` or `decline`).
 
     Every submission is a new application; earlier ones are never changed. Submissions with the same
     `applicant_number` are linked to one applicant and numbered 1, 2, 3, … in the order they arrive.
@@ -118,7 +130,10 @@ def submit_application(
             },
         )
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
-    return Application(**dict(row))
+        # Same transaction: an application is never stored without its assessment.
+        assessment = assess_and_store(conn, row)
+        row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
+    return _to_application(row, assessment)
 
 
 @router.get(
@@ -128,9 +143,12 @@ def submit_application(
     responses={404: {"model": NotFoundResponse, "description": "No application with this id."}},
 )
 def get_application(application_id: str) -> Application:
-    """Return a stored application exactly as it was saved."""
+    """Return a stored application exactly as it was saved, with its latest assessment."""
     with db.connect() as conn:
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
+        assessment = conn.execute(
+            "SELECT * FROM assessments WHERE application_id = ? ORDER BY created_at DESC LIMIT 1", (application_id,)
+        ).fetchone()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Application not found")
-    return Application(**dict(row))
+    return _to_application(row, assessment)
